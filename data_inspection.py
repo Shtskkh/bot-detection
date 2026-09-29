@@ -815,7 +815,7 @@ def _(ev_sessions_by_gap, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Очистка от межсессионных разрывов подтвердила, что боты быстрее людей внутри сессии (медиана в ~3 раза меньше при gap=1800), при этом сильно снизила общий шум метрики (std упал на порядок), но одновременно показала, что сама скорость действий у ботов более вариативна относительно своего среднего, чем у людей (cv выше) — возможный признак неоднородности популяции ботов. При этом число сессий на широких gap (900+) как отдельный признак почти не разделяет классы.
+    Очистка от межсессионных разрывов подтвердила, что боты быстрее людей внутри сессии (медиана в ~3 раза меньше при gap=1800), при этом сильно снизила общий шум метрики (std упал на порядок), но одновременно показала, что сама скорость действий у ботов более вариативна относительно своего среднего, чем у людей (cv выше) - возможный признак неоднородности популяции ботов. При этом число сессий на широких gap (900+) как отдельный признак почти не разделяет классы.
 
     Проверка чувствительности к порогу session gap выявила более сильный паттерн: медиана delta_in_sessions у бота выходит на плато уже к gap≈120-300 сек и дальше почти не растёт (7 -> 13 при расширении gap с 15 до 3600), тогда как у человека медиана продолжает расти вплоть до самых широких порогов (8 -> 41). Это указывает на метрономный, слабо зависящий от ширины окна ритм действий у бота против естественно вариативного поведения человека, где с расширением окна в сессию попадают всё более долгие человеческие паузы (чтение, раздумье). На узких gap (30-60 сек) также заметно расхождение по количеству сессий (~1.7x), которое исчезает на широких порогах — то есть события бота плотнее скучены во времени на короткой шкале.
     """)
@@ -832,6 +832,109 @@ def _(mo):
     + `cv_delta_in_sessions`
     + `delta_growth` — разница/отношение median_delta между широким и узким gap (например, gap=1800 минус gap=60) как формализация найденного паттерна "плато vs рост"
     + `sessions_count` при узком gap (30-60 сек) — в отличие от широкого gap, здесь есть сигнал
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Количество событий в сессиях
+    """)
+    return
+
+
+@app.cell
+def _(ev_deltas, pl):
+    def get_ev_counts_per_session_gap(gap: int) -> pl.DataFrame:
+        _result = (
+            ev_deltas.with_columns(
+                pl.col("delta_sec")
+                .ge(gap)
+                .fill_null(True)
+                .cum_sum()
+                .over("cookie_id")
+                .alias(f"session_{gap}_sec_gap"),
+            )
+            .group_by(["cookie_id", f"session_{gap}_sec_gap", "target"])
+            .agg(pl.len().alias("events_count_in_session"))
+            .group_by(["cookie_id", "target"])
+            .agg(
+                (
+                    pl.col("events_count_in_session").sum()
+                    / pl.col(f"session_{gap}_sec_gap").max()
+                )
+                .round(2)
+                .alias(f"events_per_session_{gap}_sec_gap")
+            )
+            .group_by("target")
+            .agg(
+                pl.col(f"events_per_session_{gap}_sec_gap")
+                .mean()
+                .alias(f"mean_events_per_session_{gap}_sec_gap"),
+                pl.col(f"events_per_session_{gap}_sec_gap")
+                .median()
+                .alias(f"median_events_per_session_{gap}_sec_gap"),
+                pl.col(f"events_per_session_{gap}_sec_gap")
+                .std()
+                .alias(f"std_events_per_session_{gap}_sec_gap"),
+            )
+            .with_columns(
+                (
+                    pl.col(f"mean_events_per_session_{gap}_sec_gap")
+                    / pl.col(f"std_events_per_session_{gap}_sec_gap")
+                ).alias(f"events_per_session_{gap}_sec_gap")
+            )
+            .with_columns(pl.col(pl.Float64).round(2))
+            .sort("target")
+        )
+
+        return _result
+
+    return (get_ev_counts_per_session_gap,)
+
+
+@app.cell
+def _(get_ev_counts_per_session_gap):
+    ev_counts_gap_60 = get_ev_counts_per_session_gap(60)
+
+    ev_counts_gap_60
+    return
+
+
+@app.cell
+def _(get_ev_counts_per_session_gap):
+    ev_counts_gap_300 = get_ev_counts_per_session_gap(300)
+
+    ev_counts_gap_300
+    return
+
+
+@app.cell
+def _(get_ev_counts_per_session_gap):
+    ev_counts_gap_1800 = get_ev_counts_per_session_gap(1800)
+
+    ev_counts_gap_1800
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    На узком окне бот делает больше действий в рамках сессии, чем человек, и чем меньше выбранное окно - тем сильнее разница (2.6x при gap=60 против 1.6x при gap=1800). Поэтому для этого признака лучше использовать узкий gap (60 сек), в отличие от delta_in_sessions, где предпочтителен широкий gap.
+
+    CV человека стабильно выше CV бота на всех проверенных порогах - разнородность объёма сессий по количеству действий у человека устойчиво выше, независимо от выбора gap.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Кандидаты на включение в итоговые признаки:
+
+    + `events_per_session` (events_count / sessions_count, gap=60) - количество событий на сессию
+    + `cv_events_per_session` - устойчив к выбору gap, можно взять на любом (например, том же 1800 для консистентности с другими cv-признаками)
     """)
     return
 
