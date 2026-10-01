@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.24.2"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
@@ -665,9 +665,24 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(ev_sessions, pl):
+def _(ev_deltas, gap, pl):
     (
-        ev_sessions.group_by("target")
+        ev_deltas.with_columns(
+            pl.col("delta_sec")
+            .ge(gap)
+            .fill_null(True)
+            .cum_sum()
+            .over("cookie_id")
+            .alias("session")
+        )
+        .with_columns(
+            pl.col("event_ts")
+            .diff()
+            .dt.total_seconds()
+            .over(["cookie_id", "session"])
+            .alias("delta_in_session")
+        )
+        .group_by("target")
         .agg(
             pl.col("session").mean().alias("mean_sessions"),
             pl.col("session").median().alias("median_sessions"),
@@ -685,9 +700,24 @@ def _(ev_sessions, pl):
 
 
 @app.cell(hide_code=True)
-def _(ev_sessions, pl):
+def _(ev_deltas, gap, pl):
     (
-        ev_sessions.group_by("target")
+        ev_deltas.with_columns(
+            pl.col("delta_sec")
+            .ge(gap)
+            .fill_null(True)
+            .cum_sum()
+            .over("cookie_id")
+            .alias("session")
+        )
+        .with_columns(
+            pl.col("event_ts")
+            .diff()
+            .dt.total_seconds()
+            .over(["cookie_id", "session"])
+            .alias("delta_in_session")
+        )
+        .group_by("target")
         .agg(
             pl.col("delta_in_session").mean().alias("mean_delta_in_sessions"),
             pl.col("delta_in_session")
@@ -727,7 +757,7 @@ def _(ev_deltas, pl, session_gaps):
     ev_sessions_by_gap = []
 
     for gap in session_gaps:
-        ev_sessions = ev_deltas.with_columns(
+        _ev_sessions = ev_deltas.with_columns(
             pl.col("delta_sec")
             .ge(gap)
             .fill_null(True)
@@ -742,8 +772,8 @@ def _(ev_deltas, pl, session_gaps):
             .alias("delta_in_session")
         )
 
-        ev_sessions_by_gap.append(ev_sessions)
-    return ev_sessions, ev_sessions_by_gap
+        ev_sessions_by_gap.append(_ev_sessions)
+    return ev_sessions_by_gap, gap
 
 
 @app.cell(hide_code=True)
