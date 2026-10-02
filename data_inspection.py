@@ -11,8 +11,9 @@ def _():
     import plotly.express as px
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
+    from ua_parser import parse
 
-    return go, make_subplots, mo, pl, px
+    return go, make_subplots, mo, parse, pl, px
 
 
 @app.cell(hide_code=True)
@@ -874,7 +875,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(ev_deltas, pl):
     def get_ev_counts_per_session_gap(gap: int) -> pl.DataFrame:
         _result = (
@@ -987,7 +988,7 @@ def _(go, pl, px, unique_ev_tr):
         color="target",
         histnorm="percent",
         barmode="group",
-        nbins=3,
+        nbins=4,
     )
 
     ev_hour_dist_by_target_plot.update_layout(
@@ -1009,7 +1010,7 @@ def _(go, pl, px, unique_ev_tr):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Боты заметно активнее в период с 0 до 8 часов, дальше либо больше активность людей, либо паритет.
+    Боты заметно активнее в период с 0 до 8 часов, дальше либо больше активность людей, либо паритет, но, даты представлены, скорее всего, в UTC формате и без геоданных распределение не даёт какого-либо сигнала.
     """)
     return
 
@@ -1053,9 +1054,177 @@ def _(go, pl, px, unique_ev_tr):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Для ботов чаще улавливается ```web``` и ```desktop``` как платформа, а также есть разночтение в ```ios``` и ```iphone```, что требует дополнительного исследования по user-agent.
+    Для ботов чаще улавливается ```web``` и ```desktop``` как платформа, а также есть разночтение в ```ios``` и ```iphone```, что требует дополнительного исследования по user_agent.
     """)
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Парсинг user_agent
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(parse, pl):
+    def parse_ua_string(ua_col: pl.Series) -> pl.Series:
+        parsed_dicts = []
+
+        for ua in ua_col:
+            parsed = parse(ua)
+
+            parsed_dicts.append(
+                {
+                    "browser": parsed.user_agent.family
+                    if parsed.user_agent is not None
+                    else "None",
+                    "os": parsed.os.family
+                    if parsed.os is not None
+                    else "None",
+                    "device": parsed.device.family
+                    if parsed.device is not None
+                    else "None",
+                }
+            )
+
+        return pl.Series(
+            parsed_dicts,
+            dtype=pl.Struct(
+                {"browser": pl.String, "os": pl.String, "device": pl.String}
+            ),
+        )
+
+    return (parse_ua_string,)
+
+
+@app.cell(hide_code=True)
+def _(parse_ua_string, pl, unique_ev_tr):
+    ev_parsed_ua = unique_ev_tr.with_columns(
+        pl.col("user_agent")
+        .map_batches(
+            parse_ua_string,
+            return_dtype=pl.Struct(
+                {
+                    "browser": pl.String,
+                    "os": pl.String,
+                    "device": pl.String,
+                }
+            ),
+        )
+        .alias("parsed")
+    ).unnest("parsed")
+    return (ev_parsed_ua,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Общее распределение
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua, go, px):
+    total_browser_hist = px.histogram(
+        ev_parsed_ua, x="browser", histnorm="percent", text_auto=True
+    )
+
+    total_browser_hist.update_xaxes(
+        go.layout.XAxis(categoryorder="total descending")
+    )
+
+    total_browser_hist.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua, go, px):
+    total_os_hist = px.histogram(
+        ev_parsed_ua, x="os", histnorm="percent", text_auto=True
+    )
+
+    total_os_hist.update_xaxes(
+        go.layout.XAxis(categoryorder="total descending")
+    )
+
+    total_os_hist.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Распределение по классам
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua, go, px):
+    target_browser_hist = px.histogram(
+        ev_parsed_ua,
+        x="browser",
+        color="target",
+        histnorm="percent",
+        barmode="group",
+        log_y=True,
+        text_auto=True,
+    )
+
+    target_browser_hist.update_xaxes(
+        go.layout.XAxis(categoryorder="total descending")
+    )
+
+    target_browser_hist.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua, go, px):
+    target_os_hist = px.histogram(
+        ev_parsed_ua,
+        x="os",
+        color="target",
+        histnorm="percent",
+        barmode="group",
+        text_auto=True,
+    )
+
+    target_os_hist.update_xaxes(
+        go.layout.XAxis(categoryorder="total descending")
+    )
+
+    target_os_hist.show()
+    return
+
+
+@app.function
+def platform_ua_match(platform: str, os: str) -> bool:
+    platform = platform.lower()
+    os = os.lower()
+
+    if platform == "desktop" and os in ["windows", "mac os x", "linux"]:
+        return True
+
+    if platform in ["iphone", "ios"] and os == "ios":
+        return True
+
+    if platform == "android" and os == "android":
+        return True
+
+    if platform == "web" and os in [
+        "windows",
+        "android",
+        "mac os x",
+        "linux",
+        "ios",
+    ]:
+        return True
+
+    return False
 
 
 if __name__ == "__main__":
