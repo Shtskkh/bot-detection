@@ -1201,7 +1201,7 @@ def _(ev_parsed_ua, go, px):
     return
 
 
-@app.function
+@app.function(hide_code=True)
 def platform_ua_match(platform: str, os: str) -> bool:
     platform = platform.lower()
     os = os.lower()
@@ -1225,6 +1225,81 @@ def platform_ua_match(platform: str, os: str) -> bool:
         return True
 
     return False
+
+
+@app.cell(hide_code=True)
+def _(pl):
+    def add_platform_match(
+        platform_col: pl.Series, os_col: pl.Series
+    ) -> pl.Series:
+
+        result = []
+        for p, o in zip(platform_col, os_col):
+            result.append(platform_ua_match(p, o))
+
+        return pl.Series(result, dtype=pl.Boolean).alias("platform_match")
+
+    return (add_platform_match,)
+
+
+@app.cell(hide_code=True)
+def _(add_platform_match, ev_parsed_ua):
+    platform_matches = add_platform_match(
+        ev_parsed_ua.get_column("platform").str.to_lowercase(),
+        ev_parsed_ua.get_column("os"),
+    )
+
+    ev_parsed_ua_matches = ev_parsed_ua.with_columns(platform_matches)
+    return (ev_parsed_ua_matches,)
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua_matches, px):
+    px.histogram(
+        ev_parsed_ua_matches,
+        x="platform_match",
+        color="target",
+        histnorm="percent",
+        barmode="group",
+        text_auto=True,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(ev_parsed_ua, pl):
+    (
+        ev_parsed_ua
+        .group_by(["cookie_id", "target"])
+        .agg(
+            pl.col("platform").str.to_lowercase().n_unique(),
+            pl.col("browser").n_unique(),
+            pl.col("os").n_unique()
+        )
+        .group_by("target")
+        .agg(
+            pl.col("platform").mean().alias("mean_platfrom_count"),
+            pl.col("browser").mean().alias("mean_browser_count"),
+            pl.col("os").mean().alias("mean_os_count")
+        )
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Среднее количество уникальных значений по всех колонкам user_agent и для бота, и для человека примерно равно, статистически бесполезный признак.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Признак `platform_mismatch` статистически значим (боты реже совпадают по platform/UA, 6.69% vs 1.43%, ~4.7x), но покрывает лишь малую часть бот-популяции (6.7%) - большинство ботов маскируются под согласованные platform/UA. Стоит включить как один из вспомогательных бинарных признаков наряду с `is_headless_chrome`, `ua_unparsed`, `has_script_library`, но не ожидать от него высокой самостоятельной важности - основной вклад этого блока, вероятно, дадут именно технические UA-маркеры (HeadlessChrome/None/скрипты), а не сверка platform <-> UA.
+    """)
+    return
 
 
 if __name__ == "__main__":
