@@ -9,6 +9,8 @@ def _():
     import marimo as mo
     import polars as pl
     from functools import partial
+    from ua_parser import parse
+    from imblearn.over_sampling import SMOTE
     from catboost import CatBoostClassifier
     from metric import precision_at_recall
 
@@ -28,12 +30,12 @@ def _(pl):
     def get_events_in_window(
         meta: pl.DataFrame, events: pl.DataFrame
     ) -> pl.DataFrame:
-        _result = meta.join(other=events, on="cookie_id").filter(
+        result = meta.join(other=events, on="cookie_id").filter(
             (pl.col("event_ts").ge(pl.col("window_start_ts")))
             & (pl.col("event_ts").lt(pl.col("window_end_ts")))
         )
 
-        return _result
+        return result
 
     return (get_events_in_window,)
 
@@ -49,7 +51,11 @@ def _(pl):
 @app.cell
 def _(pl):
     def add_events_count(events: pl.DataFrame) -> pl.DataFrame:
-        return events.group_by("cookie_id").agg(pl.len().alias("events_count"))
+        result = events.group_by("cookie_id").agg(
+            pl.len().alias("events_count")
+        )
+
+        return result
 
     return (add_events_count,)
 
@@ -57,7 +63,7 @@ def _(pl):
 @app.cell
 def _(pl):
     def add_event_deltas(events: pl.DataFrame) -> pl.DataFrame:
-        _result = (
+        result = (
             events.select(["cookie_id", "event_ts"])
             .sort(["cookie_id", "event_ts"])
             .with_columns(
@@ -69,7 +75,7 @@ def _(pl):
             )
         )
 
-        return _result
+        return result
 
     return (add_event_deltas,)
 
@@ -79,7 +85,7 @@ def _(pl):
     def add_event_sessions(
         events: pl.DataFrame, gap: int = 1800
     ) -> pl.DataFrame:
-        _result = events.with_columns(
+        result = events.with_columns(
             pl.col("delta_sec")
             .ge(gap)
             .fill_null(True)
@@ -88,7 +94,7 @@ def _(pl):
             .alias(f"session")
         )
 
-        return _result
+        return result
 
     return (add_event_sessions,)
 
@@ -96,7 +102,7 @@ def _(pl):
 @app.cell
 def _(pl):
     def add_event_deltas_in_session(events: pl.DataFrame) -> pl.DataFrame:
-        _result = events.with_columns(
+        result = events.with_columns(
             pl.col("event_ts")
             .diff()
             .dt.total_seconds()
@@ -104,7 +110,7 @@ def _(pl):
             .alias("delta_in_session")
         )
 
-        return _result
+        return result
 
     return (add_event_deltas_in_session,)
 
@@ -112,23 +118,25 @@ def _(pl):
 @app.cell
 def _(add_event_deltas, add_event_deltas_in_session, add_event_sessions, pl):
     def add_median_delta_in_sessions(events: pl.DataFrame) -> pl.DataFrame:
-        _steps = [
+        result = events
+
+        steps = [
             add_event_deltas,
             add_event_sessions,
             add_event_deltas_in_session,
         ]
 
-        _result = events.clone()
+        for step in steps:
+            result = step(result)
 
-        for _step in _steps:
-            _result = _step(_result)
-
-        return _result.group_by("cookie_id").agg(
+        result = result.group_by("cookie_id").agg(
             pl.col("delta_in_session")
             .median()
             .alias("median_delta_in_session"),
             pl.col("delta_in_session").std().alias("std_delta_in_session"),
         )
+
+        return result
 
     return (add_median_delta_in_sessions,)
 
@@ -136,15 +144,15 @@ def _(add_event_deltas, add_event_deltas_in_session, add_event_sessions, pl):
 @app.cell
 def _(add_event_deltas, add_event_sessions, partial, pl):
     def add_events_per_session(events: pl.DataFrame) -> pl.DataFrame:
-        _result = events.clone()
+        result = events
 
-        _steps = [add_event_deltas, partial(add_event_sessions, gap=60)]
+        steps = [add_event_deltas, partial(add_event_sessions, gap=60)]
 
-        for _step in _steps:
-            _result = _step(_result)
+        for step in steps:
+            result = step(result)
 
-        _result = (
-            _result.group_by(["cookie_id", "session"])
+        result = (
+            result.group_by(["cookie_id", "session"])
             .agg(pl.len().alias("event_count_in_session"))
             .group_by("cookie_id")
             .agg(
@@ -155,7 +163,7 @@ def _(add_event_deltas, add_event_sessions, partial, pl):
             )
         )
 
-        return _result
+        return result
 
     return (add_events_per_session,)
 
@@ -171,25 +179,36 @@ def _(
     pl,
 ):
     def add_features(meta: pl.DataFrame) -> pl.DataFrame:
-        _out = meta.clone()
-        _out_events = deduplicate(get_events_in_window(meta, events))
+        out = meta.clone()
+        out_events = deduplicate(get_events_in_window(meta, events))
 
-        _parts = [
-            add_events_count(_out_events),
-            add_median_delta_in_sessions(_out_events),
-            add_events_per_session(_out_events),
+        parts = [
+            add_events_count(out_events),
+            add_median_delta_in_sessions(out_events),
+            add_events_per_session(out_events),
         ]
 
-        for p in _parts:
-            _out = _out.join(p, on="cookie_id", how="left")
+        for p in parts:
+            out = out.join(p, on="cookie_id", how="left")
 
-        return _out
+        return out
 
     return (add_features,)
 
 
 @app.cell
-def _(add_features, pl, train):
+def _():
+    DROP_COLS = [
+        "cookie_id",
+        "cookie_created_at",
+        "window_start_ts",
+        "window_end_ts",
+    ]
+    return (DROP_COLS,)
+
+
+@app.cell
+def _(DROP_COLS, add_features, pl, train):
     is_valid = pl.col("window_start_ts").ge(pl.datetime(2026, 4, 17))
 
     X = add_features(train)
@@ -197,10 +216,10 @@ def _(add_features, pl, train):
     X_train = X.filter(~is_valid)
     X_valid = X.filter(is_valid)
 
-    Xtr = X_train.select(pl.selectors.numeric()).drop("target")
+    Xtr = X_train.drop([*DROP_COLS, "target"])
     ytr = X_train.get_column("target")
 
-    Xvl = X_valid.select(pl.selectors.numeric()).drop("target")
+    Xvl = X_valid.drop([*DROP_COLS, "target"])
     yvl = X_valid.get_column("target")
     return Xtr, Xvl, ytr, yvl
 
@@ -208,7 +227,11 @@ def _(add_features, pl, train):
 @app.cell
 def _(CatBoostClassifier, Xtr, pl, ytr):
     classifier = CatBoostClassifier(
-        iterations=1000, learning_rate=0.01, verbose=500, random_state=512
+        iterations=1000,
+        learning_rate=0.01,
+        verbose=500,
+        random_state=512,
+        auto_class_weights="Balanced",
     )
 
     classifier.fit(Xtr, ytr)
