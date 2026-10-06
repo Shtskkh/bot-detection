@@ -4,16 +4,24 @@ __generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Импорты
+    """)
+    return
+
+
 @app.cell
 def _():
     import marimo as mo
     import polars as pl
+    from tools.preprocessing import events_in_window
     import plotly.express as px
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
-    from ua_parser import parse
 
-    return go, make_subplots, mo, parse, pl, px
+    return events_in_window, go, make_subplots, mo, pl, px
 
 
 @app.cell(hide_code=True)
@@ -62,7 +70,7 @@ def _(events, test, train):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(pl, train):
     (
         train.group_by("target")
@@ -78,117 +86,24 @@ def _(pl, train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Даты в датасетах
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Дата создания cookie
+    В train всего 8% ботов.
     """)
     return
 
 
 @app.cell
-def _(train):
-    print(
-        train.get_column("cookie_created_at").dt.date().min(),
-        train.get_column("cookie_created_at").dt.date().max(),
-        sep="\n",
-    )
-    return
+def _(events, events_in_window, test, train):
+    events_train = events_in_window(train, events)
+    events_test = events_in_window(test, events)
 
-
-@app.cell
-def _(test):
-    print(
-        test.get_column("cookie_created_at").dt.date().min(),
-        test.get_column("cookie_created_at").dt.date().max(),
-        sep="\n",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Окна наблюдений
-    """)
-    return
-
-
-@app.cell
-def _(train):
-    print(
-        train.get_column("window_start_ts").dt.date().min(),
-        train.get_column("window_end_ts").dt.date().max(),
-        sep="\n",
-    )
-    return
-
-
-@app.cell
-def _(test):
-    print(
-        test.get_column("window_start_ts").dt.date().min(),
-        test.get_column("window_end_ts").dt.date().max(),
-        sep="\n",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # События, в рамках окна наблюдения
-    """)
-    return
-
-
-@app.cell
-def _(pl):
-    def events_in_window(
-        events: pl.DataFrame, meta: pl.DataFrame
-    ) -> pl.DataFrame:
-        return (
-            events.join(
-                meta,
-                on="cookie_id",
-                coalesce=True,
-            )
-            .filter(
-                (pl.col("event_ts") >= pl.col("window_start_ts")),
-                (pl.col("event_ts") < pl.col("window_end_ts")),
-            )
-            .drop(["cookie_created_at", "window_start_ts", "window_end_ts"])
-        )
-
-    return (events_in_window,)
-
-
-@app.cell
-def _(events, events_in_window, pl, test, train):
-    target_mapping = {"0": "Человек", "1": "Бот"}
-
-    events_train = events_in_window(events, train).with_columns(
-        pl.col("target").cast(pl.Utf8).replace(target_mapping)
-    )
-    events_test = events_in_window(events, test)
+    print(events_train.shape, events_test.shape)
     return events_test, events_train
 
 
-@app.cell
-def _(events_test, events_train):
-    print(events_train.shape, events_test.shape)
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Дубликаты
+    # Дубликаты
     """)
     return
 
@@ -196,81 +111,86 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(pl):
     def get_duplicate_counts(df: pl.DataFrame) -> pl.DataFrame:
-        return (
-            df.is_duplicated()
-            .alias("is_duplicate")
-            .value_counts()
-            .with_columns(
-                (pl.col("count") / len(df) * 100).round(2).alias("percent")
-            )
-            .sort("is_duplicate")
+        result = (
+            df.is_duplicated().alias("is_duplicate").value_counts(name="count")
         )
+
+        result = result.with_columns(
+            (pl.col("count") / len(df) * 100).round(2).alias("percent")
+        )
+
+        result = result.sort("is_duplicate")
+
+        return result
 
     return (get_duplicate_counts,)
 
 
 @app.cell(hide_code=True)
 def _(events, events_test, events_train, get_duplicate_counts, go):
-    ev_train_duplicates_count = get_duplicate_counts(events)
-    ev_tr_dublicates_count = get_duplicate_counts(events_train)
-    ev_te_dublicates_count = get_duplicate_counts(events_test)
+    _events_duplicates = get_duplicate_counts(events)
+    _events_train_duplicates = get_duplicate_counts(events_train)
+    _events_test_duplicates = get_duplicate_counts(events_test)
 
-    ev_dupl_counts_bar = go.Figure(
+    _fig = go.Figure(
         [
             go.Bar(
                 name="Процент дубликатов в events",
-                x=ev_train_duplicates_count.get_column("is_duplicate"),
-                y=ev_train_duplicates_count.get_column("percent"),
+                x=_events_duplicates.get_column("is_duplicate"),
+                y=_events_duplicates.get_column("percent"),
                 texttemplate="%{y}%",
             ),
             go.Bar(
                 name="Процент дубликатов в events_train",
-                x=ev_tr_dublicates_count.get_column("is_duplicate"),
-                y=ev_tr_dublicates_count.get_column("percent"),
+                x=_events_train_duplicates.get_column("is_duplicate"),
+                y=_events_train_duplicates.get_column("percent"),
                 texttemplate="%{y}%",
             ),
             go.Bar(
                 name="Процент дубликатов в events_test",
-                x=ev_te_dublicates_count.get_column("is_duplicate"),
-                y=ev_te_dublicates_count.get_column("percent"),
+                x=_events_test_duplicates.get_column("is_duplicate"),
+                y=_events_test_duplicates.get_column("percent"),
                 texttemplate="%{y}%",
             ),
-        ],
-        layout=go.Layout(
+        ]
+    )
+
+    _fig.update_layout(
+        go.Layout(
             title="Процент дубликатов в датасете events",
             xaxis=go.layout.XAxis(
-                title="Колонки", labelalias={"false": "Нет", "true": "Да"}
+                title="Количество дубликатов", labelalias={"false": "Нет", "true": "Да"}
             ),
             yaxis=go.layout.YAxis(title="% дубликатов", range=[0, 100]),
         ),
     )
 
-    ev_dupl_counts_bar.show()
+    _fig.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    В каждом полученном датасете есть ~3% полностью дублирующихся строк, что может искажать картину. Перед дальнейшим исследованием нужно провести дедупликацию.
+    В каждом полученном датасете есть ~3% полностью дублирующихся строк, что может искажать картину.
     """)
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(events, events_test, events_train):
     unique_events = events.unique()
     unique_ev_tr = events_train.unique()
-    unique_ev_te_clean = events_test.unique()
+    unique_ev_te = events_test.unique()
 
-    print(unique_ev_tr.shape, unique_ev_te_clean.shape)
-    return unique_ev_te_clean, unique_ev_tr, unique_events
+    print(unique_ev_tr.shape, unique_ev_te.shape)
+    return unique_ev_te, unique_ev_tr, unique_events
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Пропуски
+    # Пропуски
     """)
     return
 
@@ -293,47 +213,50 @@ def _(pl):
 
 
 @app.cell(hide_code=True)
-def _(get_null_counts, go, unique_ev_te_clean, unique_ev_tr, unique_events):
-    unique_ev_null_counts = get_null_counts(unique_events)
-    ev_tr_null_counts = get_null_counts(unique_ev_tr)
-    ev_te_null_counts = get_null_counts(unique_ev_te_clean)
+def _(get_null_counts, go, unique_ev_te, unique_ev_tr, unique_events):
+    _events_null_counts = get_null_counts(unique_events)
+    _events_train_null_counts = get_null_counts(unique_ev_tr)
+    _events_test_null_counts = get_null_counts(unique_ev_te)
 
-    ev_null_counts_bar = go.Figure(
+    _fig = go.Figure(
         [
             go.Bar(
                 name="Процент пропусков в events",
-                x=unique_ev_null_counts.get_column("column"),
-                y=unique_ev_null_counts.get_column("percent"),
+                x=_events_null_counts.get_column("column"),
+                y=_events_null_counts.get_column("percent"),
                 texttemplate="%{y}%",
             ),
             go.Bar(
                 name="Процент пропусков в events_train",
-                x=ev_tr_null_counts.get_column("column"),
-                y=ev_tr_null_counts.get_column("percent"),
+                x=_events_train_null_counts.get_column("column"),
+                y=_events_train_null_counts.get_column("percent"),
                 texttemplate="%{y}%",
             ),
             go.Bar(
                 name="Процент пропусков в events_test",
-                x=ev_te_null_counts.get_column("column"),
-                y=ev_te_null_counts.get_column("percent"),
+                x=_events_test_null_counts.get_column("column"),
+                y=_events_test_null_counts.get_column("percent"),
                 texttemplate="%{y}%",
             ),
         ],
-        layout=go.Layout(
+    )
+
+    _fig.update_layout(
+        go.Layout(
             title="Процент пропусков в датасете events",
             xaxis=go.layout.XAxis(title="Колонки"),
             yaxis=go.layout.YAxis(title="Процент пропусков"),
         ),
     )
 
-    ev_null_counts_bar.show()
+    _fig.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Распределение событий
+    # Распределение событий
     """)
     return
 
@@ -966,338 +889,6 @@ def _(mo):
 
     + `events_per_session` (events_count / sessions_count, gap=60) - количество событий на сессию
     + `cv_events_per_session` - устойчив к выбору gap, можно взять на любом (например, том же 1800 для консистентности с другими cv-признаками)
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Распределение часов событий
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(go, pl, px, unique_ev_tr):
-    ev_hour_dist_by_target_plot = px.histogram(
-        unique_ev_tr.with_columns(
-            pl.col("event_ts").dt.hour().alias("event_hour")
-        ),
-        x="event_hour",
-        color="target",
-        histnorm="percent",
-        barmode="group",
-        nbins=4,
-    )
-
-    ev_hour_dist_by_target_plot.update_layout(
-        go.Layout(
-            title="Распределение количества событий по времени",
-            xaxis=go.layout.XAxis(title="Час дня"),
-            yaxis=go.layout.YAxis(title="% в классе"),
-        )
-    )
-
-    ev_hour_dist_by_target_plot.update_traces(
-        go.Histogram(textposition="outside", texttemplate="%{y:0.2f}%")
-    )
-
-    ev_hour_dist_by_target_plot.show()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Боты заметно активнее в период с 0 до 8 часов, дальше либо больше активность людей, либо паритет, но, даты представлены, скорее всего, в UTC формате и без геоданных распределение не даёт какого-либо сигнала.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Распределение платформ
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(go, pl, px, unique_ev_tr):
-    ev_platform_dist_by_target = px.histogram(
-        unique_ev_tr.with_columns(pl.col("platform").str.to_lowercase()),
-        x="platform",
-        color="target",
-        histnorm="percent",
-        barmode="group",
-    )
-
-    ev_platform_dist_by_target.update_layout(
-        go.Layout(
-            title="Распределение платформ",
-            xaxis=go.layout.XAxis(
-                title="Платформа", categoryorder="total descending"
-            ),
-            yaxis=go.layout.YAxis(title="% в классе"),
-        )
-    )
-
-    ev_platform_dist_by_target.update_traces(
-        go.Histogram(textposition="outside", texttemplate="%{y:0.2f}%")
-    )
-
-    ev_platform_dist_by_target.show()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Для ботов чаще улавливается ```web``` и ```desktop``` как платформа, а также есть разночтение в ```ios``` и ```iphone```, что требует дополнительного исследования по user_agent.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Парсинг user_agent
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(parse, pl):
-    def parse_ua_string(ua_col: pl.Series) -> pl.Series:
-        parsed_dicts = []
-
-        for ua in ua_col:
-            parsed = parse(ua)
-
-            parsed_dicts.append(
-                {
-                    "browser": parsed.user_agent.family
-                    if parsed.user_agent is not None
-                    else "None",
-                    "os": parsed.os.family
-                    if parsed.os is not None
-                    else "None",
-                    "device": parsed.device.family
-                    if parsed.device is not None
-                    else "None",
-                }
-            )
-
-        return pl.Series(
-            parsed_dicts,
-            dtype=pl.Struct(
-                {"browser": pl.String, "os": pl.String, "device": pl.String}
-            ),
-        )
-
-    return (parse_ua_string,)
-
-
-@app.cell(hide_code=True)
-def _(parse_ua_string, pl, unique_ev_tr):
-    ev_parsed_ua = unique_ev_tr.with_columns(
-        pl.col("user_agent")
-        .map_batches(
-            parse_ua_string,
-            return_dtype=pl.Struct(
-                {
-                    "browser": pl.String,
-                    "os": pl.String,
-                    "device": pl.String,
-                }
-            ),
-        )
-        .alias("parsed")
-    ).unnest("parsed")
-    return (ev_parsed_ua,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Общее распределение
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua, go, px):
-    total_browser_hist = px.histogram(
-        ev_parsed_ua, x="browser", histnorm="percent", text_auto=True
-    )
-
-    total_browser_hist.update_xaxes(
-        go.layout.XAxis(categoryorder="total descending")
-    )
-
-    total_browser_hist.show()
-    return
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua, go, px):
-    total_os_hist = px.histogram(
-        ev_parsed_ua, x="os", histnorm="percent", text_auto=True
-    )
-
-    total_os_hist.update_xaxes(
-        go.layout.XAxis(categoryorder="total descending")
-    )
-
-    total_os_hist.show()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Распределение по классам
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua, go, px):
-    target_browser_hist = px.histogram(
-        ev_parsed_ua,
-        x="browser",
-        color="target",
-        histnorm="percent",
-        barmode="group",
-        log_y=True,
-        text_auto=True,
-    )
-
-    target_browser_hist.update_xaxes(
-        go.layout.XAxis(categoryorder="total descending")
-    )
-
-    target_browser_hist.show()
-    return
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua, go, px):
-    target_os_hist = px.histogram(
-        ev_parsed_ua,
-        x="os",
-        color="target",
-        histnorm="percent",
-        barmode="group",
-        text_auto=True,
-    )
-
-    target_os_hist.update_xaxes(
-        go.layout.XAxis(categoryorder="total descending")
-    )
-
-    target_os_hist.show()
-    return
-
-
-@app.function(hide_code=True)
-def platform_ua_match(platform: str, os: str) -> bool:
-    platform = platform.lower()
-    os = os.lower()
-
-    if platform == "desktop" and os in ["windows", "mac os x", "linux"]:
-        return True
-
-    if platform in ["iphone", "ios"] and os == "ios":
-        return True
-
-    if platform == "android" and os == "android":
-        return True
-
-    if platform == "web" and os in [
-        "windows",
-        "android",
-        "mac os x",
-        "linux",
-        "ios",
-    ]:
-        return True
-
-    return False
-
-
-@app.cell(hide_code=True)
-def _(pl):
-    def add_platform_match(
-        platform_col: pl.Series, os_col: pl.Series
-    ) -> pl.Series:
-
-        result = []
-        for p, o in zip(platform_col, os_col):
-            result.append(platform_ua_match(p, o))
-
-        return pl.Series(result, dtype=pl.Boolean).alias("platform_match")
-
-    return (add_platform_match,)
-
-
-@app.cell(hide_code=True)
-def _(add_platform_match, ev_parsed_ua):
-    platform_matches = add_platform_match(
-        ev_parsed_ua.get_column("platform").str.to_lowercase(),
-        ev_parsed_ua.get_column("os"),
-    )
-
-    ev_parsed_ua_matches = ev_parsed_ua.with_columns(platform_matches)
-    return (ev_parsed_ua_matches,)
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua_matches, px):
-    px.histogram(
-        ev_parsed_ua_matches,
-        x="platform_match",
-        color="target",
-        histnorm="percent",
-        barmode="group",
-        text_auto=True,
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(ev_parsed_ua, pl):
-    (
-        ev_parsed_ua
-        .group_by(["cookie_id", "target"])
-        .agg(
-            pl.col("platform").str.to_lowercase().n_unique(),
-            pl.col("browser").n_unique(),
-            pl.col("os").n_unique()
-        )
-        .group_by("target")
-        .agg(
-            pl.col("platform").mean().alias("mean_platfrom_count"),
-            pl.col("browser").mean().alias("mean_browser_count"),
-            pl.col("os").mean().alias("mean_os_count")
-        )
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Среднее количество уникальных значений по всех колонкам user_agent и для бота, и для человека примерно равно, статистически бесполезный признак.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Признак `platform_mismatch` статистически значим (боты реже совпадают по platform/UA, 6.69% vs 1.43%, ~4.7x), но покрывает лишь малую часть бот-популяции (6.7%) - большинство ботов маскируются под согласованные platform/UA. Стоит включить как один из вспомогательных бинарных признаков наряду с `is_headless_chrome`, `ua_unparsed`, `has_script_library`, но не ожидать от него высокой самостоятельной важности - основной вклад этого блока, вероятно, дадут именно технические UA-маркеры (HeadlessChrome/None/скрипты), а не сверка platform <-> UA.
     """)
     return
 
