@@ -1,5 +1,4 @@
 import polars as pl
-from pandas.compat.pyarrow import pa
 from ua_parser import parse
 
 
@@ -24,6 +23,15 @@ def events_in_window(
     result = result.drop(["cookie_created_at", "window_start_ts", "window_end_ts"])
 
     return result
+
+
+def get_column_specifications(col: str) -> list[pl.Expr]:
+    mean = pl.col(col).mean().name.prefix("mean_")
+    median = pl.col(col).median().name.prefix("median_")
+    std = pl.col(col).std().name.prefix("std_")
+    cv = (pl.col(col).std() / pl.col(col).mean() * 100).alias(f"cv_{col}")
+
+    return [mean, median, std, cv]
 
 
 def parse_ua_string(ua: str) -> dict:
@@ -114,3 +122,40 @@ def add_platform_match(platform_col: pl.Series, os_col: pl.Series) -> pl.Series:
         result.append(platform_ua_match(p, o))
 
     return pl.Series(result, dtype=pl.Boolean).alias("platform_match")
+
+
+def add_event_deltas(events: pl.DataFrame) -> pl.DataFrame:
+    result = events.sort(["cookie_id", "event_ts"]).with_columns(
+        pl.col("event_ts")
+        .diff()
+        .over("cookie_id")
+        .dt.total_seconds()
+        .alias("delta_sec")
+    )
+
+    return result
+
+
+def add_sessions(events: pl.DataFrame, gap: int = 1800) -> pl.DataFrame:
+    result = events.with_columns(
+        pl.col("delta_sec")
+        .ge(gap)
+        .fill_null(True)
+        .cum_sum()
+        .over("cookie_id")
+        .alias("session")
+    )
+
+    return result
+
+
+def add_event_deltas_in_session(events: pl.DataFrame) -> pl.DataFrame:
+    result = events.with_columns(
+        pl.col("event_ts")
+        .diff()
+        .dt.total_seconds()
+        .over(["cookie_id", "session"])
+        .alias("delta_in_session")
+    )
+
+    return result
