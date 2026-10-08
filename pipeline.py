@@ -79,7 +79,7 @@ def _(pl):
 
         return result
 
-    return (add_events_count,)
+    return
 
 
 @app.cell
@@ -250,7 +250,6 @@ def _(mo):
 def _(
     add_delta_in_sessions_features,
     add_dupl_pointers,
-    add_events_count,
     add_events_per_session,
     add_item_view_share,
     add_n_unique_events,
@@ -269,7 +268,7 @@ def _(
         out_events = normalize_platform(out_events)
 
         parts = [
-            add_events_count(out_events),
+            #add_events_count(out_events),
             add_n_unique_events(out_events),
             add_item_view_share(out_events),
             add_delta_in_sessions_features(out_events),
