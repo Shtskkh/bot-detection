@@ -9,12 +9,27 @@ def _():
     import marimo as mo
     import polars as pl
     from functools import partial
-    from ua_parser import parse
-    from imblearn.over_sampling import SMOTE
+    from tools.preprocessing import (
+        events_in_window,
+        add_event_deltas,
+        add_sessions,
+        add_event_deltas_in_session,
+        get_column_specifications,
+    )
     from catboost import CatBoostClassifier
     from metric import precision_at_recall
 
-    return CatBoostClassifier, partial, pl, precision_at_recall
+    return (
+        CatBoostClassifier,
+        add_event_deltas,
+        add_event_deltas_in_session,
+        add_sessions,
+        events_in_window,
+        mo,
+        partial,
+        pl,
+        precision_at_recall,
+    )
 
 
 @app.cell
@@ -27,25 +42,18 @@ def _(pl):
 
 @app.cell
 def _(pl):
-    def get_events_in_window(
-        meta: pl.DataFrame, events: pl.DataFrame
-    ) -> pl.DataFrame:
-        result = meta.join(other=events, on="cookie_id").filter(
-            (pl.col("event_ts").ge(pl.col("window_start_ts")))
-            & (pl.col("event_ts").lt(pl.col("window_end_ts")))
-        )
-
-        return result
-
-    return (get_events_in_window,)
-
-
-@app.cell
-def _(pl):
     def deduplicate(df: pl.DataFrame) -> pl.DataFrame:
         return df.unique()
 
     return (deduplicate,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Базовые признаки
+    """)
+    return
 
 
 @app.cell
@@ -62,67 +70,47 @@ def _(pl):
 
 @app.cell
 def _(pl):
-    def add_event_deltas(events: pl.DataFrame) -> pl.DataFrame:
-        result = (
-            events.select(["cookie_id", "event_ts"])
-            .sort(["cookie_id", "event_ts"])
-            .with_columns(
-                pl.col("event_ts")
-                .diff()
-                .over("cookie_id")
-                .dt.total_seconds()
-                .alias("delta_sec")
-            )
+    def add_n_unique_events(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("event_name").n_unique().name.prefix("n_unique_")
         )
 
         return result
 
-    return (add_event_deltas,)
+    return (add_n_unique_events,)
 
 
 @app.cell
 def _(pl):
-    def add_event_sessions(
-        events: pl.DataFrame, gap: int = 1800
-    ) -> pl.DataFrame:
-        result = events.with_columns(
-            pl.col("delta_sec")
-            .ge(gap)
-            .fill_null(True)
-            .cum_sum()
-            .over("cookie_id")
-            .alias(f"session")
+    def add_item_view_share(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("event_name")
+            .eq("item_view")
+            .mean()
+            .alias("share_of_item_view")
         )
 
         return result
 
-    return (add_event_sessions,)
+    return (add_item_view_share,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Временные и сессионные признаки
+    """)
+    return
 
 
 @app.cell
-def _(pl):
-    def add_event_deltas_in_session(events: pl.DataFrame) -> pl.DataFrame:
-        result = events.with_columns(
-            pl.col("event_ts")
-            .diff()
-            .dt.total_seconds()
-            .over(["cookie_id", "session"])
-            .alias("delta_in_session")
-        )
-
-        return result
-
-    return (add_event_deltas_in_session,)
-
-
-@app.cell
-def _(add_event_deltas, add_event_deltas_in_session, add_event_sessions, pl):
-    def add_median_delta_in_sessions(events: pl.DataFrame) -> pl.DataFrame:
+def _(add_event_deltas, add_event_deltas_in_session, add_sessions, pl):
+    def add_delta_in_sessions_features(events: pl.DataFrame) -> pl.DataFrame:
         result = events
 
         steps = [
             add_event_deltas,
-            add_event_sessions,
+            add_sessions,
             add_event_deltas_in_session,
         ]
 
@@ -130,23 +118,21 @@ def _(add_event_deltas, add_event_deltas_in_session, add_event_sessions, pl):
             result = step(result)
 
         result = result.group_by("cookie_id").agg(
-            pl.col("delta_in_session")
-            .median()
-            .alias("median_delta_in_session"),
-            pl.col("delta_in_session").std().alias("std_delta_in_session"),
+            pl.col("delta_in_session").median().name.prefix("median_"),
+            pl.col("delta_in_session").std().name.prefix("std_"),
         )
 
         return result
 
-    return (add_median_delta_in_sessions,)
+    return (add_delta_in_sessions_features,)
 
 
 @app.cell
-def _(add_event_deltas, add_event_sessions, partial, pl):
+def _(add_event_deltas, add_sessions, partial, pl):
     def add_events_per_session(events: pl.DataFrame) -> pl.DataFrame:
         result = events
 
-        steps = [add_event_deltas, partial(add_event_sessions, gap=60)]
+        steps = [add_event_deltas, partial(add_sessions, gap=60)]
 
         for step in steps:
             result = step(result)
@@ -168,23 +154,35 @@ def _(add_event_deltas, add_event_sessions, partial, pl):
     return (add_events_per_session,)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Pipeline
+    """)
+    return
+
+
 @app.cell
 def _(
+    add_delta_in_sessions_features,
     add_events_count,
     add_events_per_session,
-    add_median_delta_in_sessions,
+    add_item_view_share,
+    add_n_unique_events,
     deduplicate,
     events,
-    get_events_in_window,
+    events_in_window,
     pl,
 ):
     def add_features(meta: pl.DataFrame) -> pl.DataFrame:
         out = meta.clone()
-        out_events = deduplicate(get_events_in_window(meta, events))
+        out_events = deduplicate(events_in_window(meta, events))
 
         parts = [
             add_events_count(out_events),
-            add_median_delta_in_sessions(out_events),
+            add_n_unique_events(out_events),
+            add_item_view_share(out_events),
+            add_delta_in_sessions_features(out_events),
             add_events_per_session(out_events),
         ]
 

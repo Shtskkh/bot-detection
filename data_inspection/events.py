@@ -23,6 +23,7 @@ def _():
         add_sessions,
         add_event_deltas_in_session,
     )
+    from tools.visualization import plot_column_specs
     import plotly.express as px
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -34,9 +35,9 @@ def _():
         events_in_window,
         get_column_specifications,
         go,
-        make_subplots,
         mo,
         pl,
+        plot_column_specs,
         px,
     )
 
@@ -48,65 +49,6 @@ def _(events_in_window, pl):
 
     events_train = events_in_window(_train, _events).unique()
     return (events_train,)
-
-
-@app.cell
-def _(go, make_subplots, pl):
-    def plot_column_specs(events_aggregated: pl.DataFrame, x_col: str, y_col: str) -> go.Figure:
-    
-        fig = make_subplots(
-            rows=2,
-            cols=2,
-            subplot_titles=(
-                "Среднее",
-                "Медиана",
-                "Стд. отклонение",
-                "Коэфф. вариации",
-            ),
-        )
-
-        fig.add_bar(
-            x=events_aggregated.get_column(x_col),
-            y=events_aggregated.get_column(f"mean_{y_col}"),
-            row=1,
-            col=1,
-            texttemplate="%{y}",
-        )
-
-        fig.add_bar(
-            x=events_aggregated.get_column(x_col),
-            y=events_aggregated.get_column(f"median_{y_col}"),
-            row=1,
-            col=2,
-            texttemplate="%{y}",
-        )
-
-        fig.add_bar(
-            x=events_aggregated.get_column(x_col),
-            y=events_aggregated.get_column(f"std_{y_col}"),
-            row=2,
-            col=1,
-            texttemplate="%{y}",
-        )
-
-        fig.add_bar(
-            x=events_aggregated.get_column(x_col),
-            y=events_aggregated.get_column(f"cv_{y_col}"),
-            row=2,
-            col=2,
-            texttemplate="%{y}",
-        )
-
-        fig.update_layout(
-            go.Layout(
-                title=f"Численные характеристики {y_col}",
-                showlegend=False,
-            )
-        )
-
-        return fig
-
-    return (plot_column_specs,)
 
 
 @app.cell(hide_code=True)
@@ -151,6 +93,76 @@ def _(mo):
     У ботов чаще встречается события ```item_view```, ```search_results_view```. Также, хоть и не значительно, выше ```seller_page_view```, что может говорить нам о том, что боты также сканируют продавцов.
 
     Люди же при этом чаще делают свайпы и добавляют в избранное.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = events_train.group_by("cookie_id", "target").agg(
+        pl.col("event_name").n_unique().name.prefix("n_unique_")
+    )
+
+    _specs = get_column_specifications("n_unique_event_name")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, "target", "n_unique_event_name")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    У ботов заметно слабее стандартное отклонение и коэффициент вариации.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = events_train.group_by("cookie_id", "target").agg(
+        pl.col("event_name").eq("item_view").mean().alias("share_of_item_view")
+    )
+
+    _specs = get_column_specifications("share_of_item_view")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, x_col="target", y_col="share_of_item_view")
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = events_train.group_by("cookie_id", "target").agg(
+        pl.col("event_name").eq("search_results_view").mean().alias("share_of_search_results_view")
+    )
+
+    _specs = get_column_specifications("share_of_search_results_view")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, x_col="target", y_col="share_of_search_results_view")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Доля событий `item_view` и `search_results_view` у ботов по коэффициенту вариации сильно стабильнее, чем у людей. Потенциальные признаки.
     """)
     return
 
