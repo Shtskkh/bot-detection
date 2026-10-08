@@ -48,6 +48,20 @@ def _(pl):
     return (deduplicate,)
 
 
+@app.cell
+def _(pl):
+    def normalize_platform(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.with_columns(
+            pl.col("platform")
+            .str.to_lowercase()
+            .replace({"iphone": "ios", "desktop": "web"})
+        )
+
+        return result
+
+    return (normalize_platform,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -157,9 +171,21 @@ def _(add_event_deltas, add_sessions, partial, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Pointer_x/y
+    # Платформенные признаки
     """)
     return
+
+
+@app.cell
+def _(pl):
+    def add_platform(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("platform").mode().first()
+        )
+
+        return result
+
+    return (add_platform,)
 
 
 @app.cell
@@ -198,6 +224,20 @@ def _(pl):
     return (add_dupl_pointers,)
 
 
+@app.cell
+def _(pl):
+    def add_web_pointers_null(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.filter(pl.col("pointer_x").is_null())
+
+        result = result.group_by("cookie_id").agg(
+            pl.col("platform").mode().first().eq("web").alias("web_pointer_miss")
+        )
+
+        return result
+
+    return (add_web_pointers_null,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -214,15 +254,19 @@ def _(
     add_events_per_session,
     add_item_view_share,
     add_n_unique_events,
+    add_platform,
     add_pointers_null_share,
+    add_web_pointers_null,
     deduplicate,
     events,
     events_in_window,
+    normalize_platform,
     pl,
 ):
     def add_features(meta: pl.DataFrame) -> pl.DataFrame:
         out = meta.clone()
         out_events = deduplicate(events_in_window(meta, events))
+        out_events = normalize_platform(out_events)
 
         parts = [
             add_events_count(out_events),
@@ -230,8 +274,10 @@ def _(
             add_item_view_share(out_events),
             add_delta_in_sessions_features(out_events),
             add_events_per_session(out_events),
+            add_platform(out_events),
             add_pointers_null_share(out_events),
             add_dupl_pointers(out_events),
+            add_web_pointers_null(out_events),
         ]
 
         for p in parts:
@@ -267,7 +313,13 @@ def _(DROP_COLS, add_features, pl, train):
 
     Xvl = X_valid.drop([*DROP_COLS, "target"])
     yvl = X_valid.get_column("target")
-    return Xtr, Xvl, ytr, yvl
+    return X, Xtr, Xvl, ytr, yvl
+
+
+@app.cell
+def _(X):
+    X.head(5)
+    return
 
 
 @app.cell
@@ -278,6 +330,7 @@ def _(CatBoostClassifier, Xtr, pl, ytr):
         verbose=500,
         random_state=512,
         auto_class_weights="Balanced",
+        cat_features=["platform"]
     )
 
     classifier.fit(Xtr, ytr)
