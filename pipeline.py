@@ -157,6 +157,50 @@ def _(add_event_deltas, add_sessions, partial, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    # Pointer_x/y
+    """)
+    return
+
+
+@app.cell
+def _(pl):
+    def add_pointers_null_share(
+        events: pl.DataFrame,
+    ) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("pointer_x", "pointer_y")
+            .is_null()
+            .mean()
+            .name.prefix("null_share_of_")
+        )
+
+        return result
+
+    return (add_pointers_null_share,)
+
+
+@app.cell
+def _(pl):
+    def add_dupl_pointers(events: pl.DataFrame) -> pl.DataFrame:
+        result = (
+            events.filter(pl.col("pointer_x").is_not_null())
+            .group_by("cookie_id")
+            .agg(
+                pl.col("pointer_x", "pointer_y")
+                .is_duplicated()
+                .sum()
+                .name.prefix("dupl_of_")
+            )
+        )
+
+        return result
+
+    return (add_dupl_pointers,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     # Pipeline
     """)
     return
@@ -165,10 +209,12 @@ def _(mo):
 @app.cell
 def _(
     add_delta_in_sessions_features,
+    add_dupl_pointers,
     add_events_count,
     add_events_per_session,
     add_item_view_share,
     add_n_unique_events,
+    add_pointers_null_share,
     deduplicate,
     events,
     events_in_window,
@@ -184,6 +230,8 @@ def _(
             add_item_view_share(out_events),
             add_delta_in_sessions_features(out_events),
             add_events_per_session(out_events),
+            add_pointers_null_share(out_events),
+            add_dupl_pointers(out_events),
         ]
 
         for p in parts:
