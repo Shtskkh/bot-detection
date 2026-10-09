@@ -79,7 +79,7 @@ def _(pl):
 
         return result
 
-    return
+    return (add_events_count,)
 
 
 @app.cell
@@ -241,6 +241,52 @@ def _(pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    # Признаки предметов
+    """)
+    return
+
+
+@app.cell
+def _(pl):
+    def add_n_unique_item_id(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.filter(pl.col("item_id").is_not_null())
+    
+        result = result.group_by("cookie_id").agg(
+            pl.col("item_id").n_unique().name.prefix("n_unique_")
+        )
+
+        return result
+
+    return (add_n_unique_item_id,)
+
+
+@app.cell
+def _(pl):
+    def add_n_unique_locations(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("item_location").n_unique().name.prefix("n_unique_")
+        )
+
+        return result
+
+    return (add_n_unique_locations,)
+
+
+@app.cell
+def _(pl):
+    def add_n_unique_categories(events: pl.DataFrame) -> pl.DataFrame:
+        result = events.group_by("cookie_id").agg(
+            pl.col("item_category").n_unique().name.prefix("n_unqiue_")
+        )
+
+        return result
+
+    return (add_n_unique_categories,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     # Pipeline
     """)
     return
@@ -250,9 +296,13 @@ def _(mo):
 def _(
     add_delta_in_sessions_features,
     add_dupl_pointers,
+    add_events_count,
     add_events_per_session,
     add_item_view_share,
+    add_n_unique_categories,
     add_n_unique_events,
+    add_n_unique_item_id,
+    add_n_unique_locations,
     add_platform,
     add_pointers_null_share,
     add_web_pointers_null,
@@ -268,7 +318,7 @@ def _(
         out_events = normalize_platform(out_events)
 
         parts = [
-            #add_events_count(out_events),
+            add_events_count(out_events),
             add_n_unique_events(out_events),
             add_item_view_share(out_events),
             add_delta_in_sessions_features(out_events),
@@ -277,6 +327,9 @@ def _(
             add_pointers_null_share(out_events),
             add_dupl_pointers(out_events),
             add_web_pointers_null(out_events),
+            add_n_unique_item_id(out_events),
+            add_n_unique_locations(out_events),
+            add_n_unique_categories(out_events),
         ]
 
         for p in parts:

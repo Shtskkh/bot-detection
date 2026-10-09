@@ -54,7 +54,7 @@ def _(events_train, pl):
             pl.col(["item_id", "item_category", "item_location"])
             .is_null()
             .mean()
-            .name.prefix("mean_null_"),
+            .name.prefix("share_null_"),
         )
         .with_columns(pl.col(pl.Float64).round(2))
         .sort("count")
@@ -87,6 +87,26 @@ def _(events_train, pl):
 def _(mo):
     mo.md(r"""
     У ботов всегда есть заполенный item_id, у пользователей он на 0.02 меньше.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, pl):
+    (
+        events_train.select(
+            pl.col("item_id").is_null().sum(),
+            pl.col("item_category").is_null().sum(),
+            pl.col("item_location").is_null().sum()
+        )
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Заполненность `item_id`, `item_category` и `item_location` независима друг от друга.
     """)
     return
 
@@ -156,7 +176,7 @@ def _(events_train, pl):
             .is_null()
             .mean()
             .name.prefix("null_"),
-       
+   
             (
                 pl.col("item_category").is_null()
                 & pl.col("item_location").is_null()
@@ -167,6 +187,74 @@ def _(events_train, pl):
         .with_columns(pl.col(pl.Float64).round(4))
         .sort("target")
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = (
+        events_train.filter(pl.col("item_id").is_not_null())
+        .group_by("cookie_id", "target")
+        .agg(pl.col("item_id").n_unique().name.prefix("n_unique_"))
+    )
+
+    _specs = get_column_specifications("n_unique_item_id")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, "target", "n_unique_item_id")
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = (
+        events_train.filter(pl.col("item_category").is_not_null())
+        .group_by("cookie_id", "target")
+        .agg(pl.col("item_category").n_unique().name.prefix("n_unique_"))
+    )
+
+    _specs = get_column_specifications("n_unique_item_category")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, "target", "n_unique_item_category")
+    return
+
+
+@app.cell(hide_code=True)
+def _(events_train, get_column_specifications, pl, plot_column_specs):
+    _result = (
+        events_train.filter(pl.col("item_location").is_not_null())
+        .group_by("cookie_id", "target")
+        .agg(pl.col("item_location").n_unique().name.prefix("n_unique_"))
+    )
+
+    _specs = get_column_specifications("n_unique_item_location")
+
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+    )
+
+    plot_column_specs(_result, "target", "n_unique_item_location")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    У ботов больше уникальных `item_id` и `item_location`, но различных `item_category` у людей незначительно больше.
+    """)
     return
 
 
@@ -188,7 +276,7 @@ def _(mo):
 
 @app.cell
 def _(events_train, pl):
-    monotonicity = (
+    item_id_monotonicity = (
         events_train.filter(pl.col("item_id").is_not_null())
         .sort(["cookie_id", "event_ts"])
         .with_columns(
@@ -211,17 +299,15 @@ def _(events_train, pl):
             ).alias("item_id_monotonicity")
         )
     )
-
-    monotonicity.head()
-    return (monotonicity,)
+    return (item_id_monotonicity,)
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, monotonicity, pl, plot_column_specs):
+def _(get_column_specifications, item_id_monotonicity, pl, plot_column_specs):
     _specs = get_column_specifications("pct_increasing_item_id")
 
     _result = (
-        monotonicity.group_by("target")
+        item_id_monotonicity.group_by("target")
         .agg(_specs)
         .with_columns(pl.col(pl.Float64).round(2))
         .sort("target")
@@ -232,11 +318,11 @@ def _(get_column_specifications, monotonicity, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, monotonicity, pl, plot_column_specs):
+def _(get_column_specifications, item_id_monotonicity, pl, plot_column_specs):
     _specs = get_column_specifications("pct_decreasing_item_id")
 
     _result = (
-        monotonicity.group_by("target")
+        item_id_monotonicity.group_by("target")
         .agg(_specs)
         .with_columns(pl.col(pl.Float64).round(2))
         .sort("target")
@@ -247,11 +333,11 @@ def _(get_column_specifications, monotonicity, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, monotonicity, pl, plot_column_specs):
+def _(get_column_specifications, item_id_monotonicity, pl, plot_column_specs):
     _specs = get_column_specifications("item_id_monotonicity")
 
     _result = (
-        monotonicity.group_by("target")
+        item_id_monotonicity.group_by("target")
         .agg(_specs)
         .with_columns(pl.col(pl.Float64).round(2))
         .sort("target")
