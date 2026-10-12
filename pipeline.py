@@ -12,10 +12,9 @@ with app.setup:
         add_event_deltas,
         add_sessions,
         add_event_deltas_in_session,
-        get_column_specifications,
     )
     from catboost import CatBoostClassifier
-    from metric import precision_at_recall
+    from tools.metric import precision_at_recall
 
     train = pl.read_csv("./data/train.csv", try_parse_dates=True)
     test = pl.read_csv("./data/test.csv", try_parse_dates=True)
