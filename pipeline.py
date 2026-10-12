@@ -147,6 +147,25 @@ def add_platform(events: pl.DataFrame) -> pl.DataFrame:
 
 
 @app.function
+def add_pointer_stats(events: pl.DataFrame) -> pl.DataFrame:
+    result = (
+        events.filter(pl.col("pointer_x").is_not_null())
+        .group_by("cookie_id")
+        .agg(
+            pl.col("pointer_x", "pointer_y").std().name.prefix("std_"),
+            pl.col("pointer_x", "pointer_y")
+            .median()
+            .name.prefix("median_"),
+            (
+                pl.col("pointer_x", "pointer_y").n_unique() / pl.len()
+            ).name.prefix("unique_ratio_"),
+        )
+    )
+
+    return result
+
+
+@app.function
 def add_pointers_null_share(
     events: pl.DataFrame,
 ) -> pl.DataFrame:
@@ -161,27 +180,15 @@ def add_pointers_null_share(
 
 
 @app.function
-def add_dupl_pointers(events: pl.DataFrame) -> pl.DataFrame:
-    result = (
-        events.filter(pl.col("pointer_x").is_not_null())
-        .group_by("cookie_id")
-        .agg(
-            pl.col("pointer_x", "pointer_y")
-            .is_duplicated()
-            .sum()
-            .name.prefix("dupl_of_")
-        )
-    )
-
-    return result
-
-
-@app.function
 def add_web_pointers_null(events: pl.DataFrame) -> pl.DataFrame:
     result = events.filter(pl.col("pointer_x").is_null())
 
     result = result.group_by("cookie_id").agg(
-        pl.col("platform").mode().first().eq("web").alias("web_pointer_miss")
+        pl.col("platform")
+        .mode()
+        .first()
+        .eq("web")
+        .alias("web_pointer_miss")
     )
 
     return result
@@ -245,8 +252,8 @@ def add_features(meta: pl.DataFrame) -> pl.DataFrame:
         add_delta_in_sessions_features(out_events),
         add_events_per_session(out_events),
         add_platform(out_events),
+        add_pointer_stats(out_events),
         add_pointers_null_share(out_events),
-        add_dupl_pointers(out_events),
         add_web_pointers_null(out_events),
         add_n_unique_item_id(out_events),
         add_n_unique_locations(out_events),
@@ -301,7 +308,7 @@ def _(Xtr, ytr):
         verbose=500,
         random_state=512,
         auto_class_weights="Balanced",
-        cat_features=["platform"]
+        cat_features=["platform"],
     )
 
     classifier.fit(Xtr, ytr)
