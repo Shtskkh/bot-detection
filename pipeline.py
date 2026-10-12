@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.25.0"
+__generated_with = "0.25.1"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -15,6 +15,7 @@ with app.setup:
     )
     from catboost import CatBoostClassifier
     from tools.metric import precision_at_recall
+    import json
 
     train = pl.read_csv("./data/train.csv", try_parse_dates=True)
     test = pl.read_csv("./data/test.csv", try_parse_dates=True)
@@ -301,12 +302,12 @@ def _(X):
 
 @app.cell
 def _(Xtr, ytr):
+    with open("best_params.json") as f:
+        params = json.load(f)
+
     classifier = CatBoostClassifier(
-        iterations=1000,
-        learning_rate=0.01,
+        **params,
         verbose=500,
-        random_state=512,
-        auto_class_weights="Balanced",
         cat_features=["platform"],
     )
 

@@ -1,0 +1,14 @@
+{
+  "learning_rate": 0.01867701632143537,
+  "depth": 6,
+  "l2_leaf_reg": 6.934538293305569,
+  "random_strength": 2.4730140970784342,
+  "bagging_temperature": 2.8698167309466553,
+  "border_count": 128,
+  "min_data_in_leaf": 50,
+  "auto_class_weights": "SqrtBalanced",
+  "iterations": 812,
+  "grow_policy": "Lossguide",
+  "loss_function": "Logloss",
+  "random_state": 512
+}
