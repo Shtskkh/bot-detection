@@ -3,17 +3,7 @@ import marimo
 __generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Импорты
-    """)
-    return
-
-
-@app.cell
-def _():
+with app.setup:
     import marimo as mo
     import polars as pl
     from tools.preprocessing import (
@@ -28,31 +18,14 @@ def _():
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    return (
-        add_event_deltas,
-        add_event_deltas_in_session,
-        add_sessions,
-        events_in_window,
-        get_column_specifications,
-        go,
-        mo,
-        pl,
-        plot_column_specs,
-        px,
-    )
-
-
-@app.cell
-def _(events_in_window, pl):
     _train = pl.read_csv("./data/train.csv", try_parse_dates=True)
     _events = pl.read_csv("./data/events.csv.gz", try_parse_dates=True)
 
     events_train = events_in_window(_train, _events).unique()
-    return (events_train,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Распределение событий
     """)
@@ -60,7 +33,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, go, px):
+def _():
     _fig = px.histogram(
         events_train,
         x="event_name",
@@ -88,7 +61,7 @@ def _(events_train, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     У ботов чаще встречается события ```item_view```, ```search_results_view```. Также, хоть и не значительно, выше ```seller_page_view```, что может говорить нам о том, что боты также сканируют продавцов.
 
@@ -98,7 +71,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, get_column_specifications, pl, plot_column_specs):
+def _():
     _result = events_train.group_by("cookie_id", "target").agg(
         pl.col("event_name").n_unique().name.prefix("n_unique_")
     )
@@ -116,7 +89,7 @@ def _(events_train, get_column_specifications, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     У ботов заметно слабее стандартное отклонение и коэффициент вариации.
     """)
@@ -124,7 +97,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, get_column_specifications, pl, plot_column_specs):
+def _():
     _result = events_train.group_by("cookie_id", "target").agg(
         pl.col("event_name").eq("item_view").mean().alias("share_of_item_view")
     )
@@ -142,7 +115,7 @@ def _(events_train, get_column_specifications, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(events_train, get_column_specifications, pl, plot_column_specs):
+def _():
     _result = events_train.group_by("cookie_id", "target").agg(
         pl.col("event_name").eq("search_results_view").mean().alias("share_of_search_results_view")
     )
@@ -160,7 +133,7 @@ def _(events_train, get_column_specifications, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Доля событий `item_view` и `search_results_view` у ботов по коэффициенту вариации сильно стабильнее, чем у людей. Потенциальные признаки.
     """)
@@ -168,7 +141,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Распределение количества событий
     """)
@@ -176,7 +149,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, go, px):
+def _():
     px.histogram(
         events_train, x="target", color="target", text_auto=True
     ).update_layout(
@@ -192,7 +165,7 @@ def _(events_train, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     В датасете сильный дисбаланс классов.
     """)
@@ -200,7 +173,7 @@ def _(mo):
 
 
 @app.cell
-def _(events_train, pl):
+def _():
     events_count = (
         events_train.group_by(["cookie_id", "target"])
         .agg(pl.len().alias("events_count"))
@@ -210,7 +183,7 @@ def _(events_train, pl):
 
 
 @app.cell(hide_code=True)
-def _(events_count, px):
+def _(events_count):
     px.histogram(
         events_count,
         x="events_count",
@@ -223,7 +196,7 @@ def _(events_count, px):
 
 
 @app.cell(hide_code=True)
-def _(events_count, px):
+def _(events_count):
     px.histogram(
         events_count,
         x="log_events_count",
@@ -236,7 +209,7 @@ def _(events_count, px):
 
 
 @app.cell(hide_code=True)
-def _(events_count, get_column_specifications, pl, plot_column_specs):
+def _(events_count):
     _specs = get_column_specifications("events_count")
 
     _result = (
@@ -251,7 +224,7 @@ def _(events_count, get_column_specifications, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     **Отношения средних к медианам**:
 
@@ -269,7 +242,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_count, go, px):
+def _(events_count):
     _fig = px.box(
         events_count,
         x="target",
@@ -290,7 +263,7 @@ def _(events_count, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Почти всегда разница в перцентилях между ботами и людьми держится на уровне ~1.7x, значит это системный сдвиг и боты генерирует в общей массе больше событий.
 
@@ -300,7 +273,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Дельты событий
     """)
@@ -308,13 +281,13 @@ def _(mo):
 
 
 @app.cell
-def _(add_event_deltas, events_train):
+def _():
     event_deltas = add_event_deltas(events_train)
     return (event_deltas,)
 
 
 @app.cell(hide_code=True)
-def _(event_deltas, px):
+def _(event_deltas):
     px.histogram(
         event_deltas,
         x="delta_sec",
@@ -327,7 +300,7 @@ def _(event_deltas, px):
 
 
 @app.cell(hide_code=True)
-def _(event_deltas, get_column_specifications, pl, plot_column_specs):
+def _(event_deltas):
     _specs = get_column_specifications("delta_sec")
 
     _result = (
@@ -342,7 +315,7 @@ def _(event_deltas, get_column_specifications, pl, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(event_deltas, pl):
+def _(event_deltas):
     (
         event_deltas.group_by("target")
         .agg(
@@ -355,7 +328,7 @@ def _(event_deltas, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     По резкому скачку между p75 и p90 можно предположить, что, что в ```delta_sec``` есть два смешанных процесса: разрывы между сессиями и скорость между событиями в рамках сессии, нужно дальнейшее исследование.
 
@@ -365,7 +338,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Сессии
     """)
@@ -373,7 +346,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## gap 1800 секунд
     """)
@@ -381,7 +354,7 @@ def _(mo):
 
 
 @app.cell
-def _(add_sessions, event_deltas):
+def _(event_deltas):
     _gap = 1800
 
     sessions_gap_1800 = add_sessions(event_deltas, gap=_gap)
@@ -389,7 +362,7 @@ def _(add_sessions, event_deltas):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, pl, plot_column_specs, sessions_gap_1800):
+def _(sessions_gap_1800):
     _specs = get_column_specifications("session")
 
     _result = (
@@ -404,12 +377,7 @@ def _(get_column_specifications, pl, plot_column_specs, sessions_gap_1800):
 
 
 @app.cell(hide_code=True)
-def _(
-    add_event_deltas_in_session,
-    get_column_specifications,
-    plot_column_specs,
-    sessions_gap_1800,
-):
+def _(sessions_gap_1800):
     _result = add_event_deltas_in_session(sessions_gap_1800)
 
     _specs = get_column_specifications("delta_in_session")
@@ -420,7 +388,7 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Проверка чувствительности
     """)
@@ -428,7 +396,7 @@ def _(mo):
 
 
 @app.cell
-def _(add_sessions, event_deltas):
+def _(event_deltas):
     session_gaps = [15, 30, 60, 120, 300, 600, 900, 1800, 3600]
 
     sessions_by_gaps = []
@@ -439,7 +407,7 @@ def _(add_sessions, event_deltas):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, pl, session_gaps, sessions_by_gaps):
+def _(session_gaps, sessions_by_gaps):
     _comprassion = pl.DataFrame()
 
     for _gap, _df in zip(session_gaps, sessions_by_gaps):
@@ -460,13 +428,7 @@ def _(get_column_specifications, pl, session_gaps, sessions_by_gaps):
 
 
 @app.cell(hide_code=True)
-def _(
-    add_event_deltas_in_session,
-    get_column_specifications,
-    pl,
-    session_gaps,
-    sessions_by_gaps,
-):
+def _(session_gaps, sessions_by_gaps):
     _comprassion = pl.DataFrame()
 
     for _gap, _df in zip(session_gaps, sessions_by_gaps):
@@ -489,7 +451,7 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Очистка от межсессионных разрывов подтвердила, что боты быстрее людей внутри сессии (медиана в ~3 раза меньше при gap=1800), при этом сильно снизила общий шум метрики (std упал на порядок), но одновременно показала, что сама скорость действий у ботов более вариативна относительно своего среднего, чем у людей (cv выше) - возможный признак неоднородности популяции ботов. При этом число сессий на широких gap (900+) как отдельный признак почти не разделяет классы.
     """)
@@ -497,7 +459,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Проверка чувствительности к порогу session gap выявила более сильный паттерн: медиана delta_in_sessions у бота выходит на плато уже к gap≈120-300 сек и дальше почти не растёт (7 -> 13 при расширении gap с 15 до 3600), тогда как у человека медиана продолжает расти вплоть до самых широких порогов (8 -> 41). Это указывает на метрономный, слабо зависящий от ширины окна ритм действий у бота против естественно вариативного поведения человека, где с расширением окна в сессию попадают всё более долгие человеческие паузы (чтение, раздумье). На узких gap (30-60 сек) также заметно расхождение по количеству сессий (~1.7x), которое исчезает на широких порогах — то есть события бота плотнее скучены во времени на короткой шкале.
     """)
@@ -505,7 +467,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Кандидаты на включение в итоговые признаки:
     + `median_delta_in_sessions` (при фиксированном gap, например 1800)
@@ -518,48 +480,45 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Количество событий в сессиях
     """)
     return
 
 
-@app.cell
-def _(add_event_deltas, add_sessions, get_column_specifications, pl):
-    def get_events_count_per_session_gap(
-        events: pl.DataFrame, gap: int
-    ) -> pl.DataFrame:
+@app.function
+def get_events_count_per_session_gap(
+    events: pl.DataFrame, gap: int
+) -> pl.DataFrame:
 
-        _result = add_event_deltas(events)
-        _result = add_sessions(_result, gap=gap)
+    _result = add_event_deltas(events)
+    _result = add_sessions(_result, gap=gap)
 
-        _result = _result.group_by(["cookie_id", "session", "target"]).agg(
-            pl.len().alias("events_in_session")
-        )
+    _result = _result.group_by(["cookie_id", "session", "target"]).agg(
+        pl.len().alias("events_in_session")
+    )
 
-        _result = _result.group_by(["cookie_id", "target"]).agg(
-            (
-                pl.col("events_in_session").sum() / pl.col("session").max()
-            ).alias("events_per_session")
-        )
+    _result = _result.group_by(["cookie_id", "target"]).agg(
+        (
+            pl.col("events_in_session").sum() / pl.col("session").max()
+        ).alias("events_per_session")
+    )
 
-        _specs = get_column_specifications("events_per_session")
+    _specs = get_column_specifications("events_per_session")
 
-        _result = (
-            _result.group_by("target")
-            .agg(_specs)
-            .with_columns(pl.col(pl.Float64).round(2))
-            .sort("target")
-        )
+    _result = (
+        _result.group_by("target")
+        .agg(_specs)
+        .with_columns(pl.col(pl.Float64).round(2))
+        .sort("target")
+    )
 
-        return _result
-
-    return (get_events_count_per_session_gap,)
+    return _result
 
 
 @app.cell
-def _(events_train, get_events_count_per_session_gap, plot_column_specs):
+def _():
     _gap = 60
     _result = get_events_count_per_session_gap(events_train, _gap)
 
@@ -568,7 +527,7 @@ def _(events_train, get_events_count_per_session_gap, plot_column_specs):
 
 
 @app.cell
-def _(events_train, get_events_count_per_session_gap, plot_column_specs):
+def _():
     _gap = 300
     _result = get_events_count_per_session_gap(events_train, _gap)
 
@@ -577,7 +536,7 @@ def _(events_train, get_events_count_per_session_gap, plot_column_specs):
 
 
 @app.cell
-def _(events_train, get_events_count_per_session_gap, plot_column_specs):
+def _():
     _gap = 1800
     _result = get_events_count_per_session_gap(events_train, _gap)
 
@@ -586,7 +545,7 @@ def _(events_train, get_events_count_per_session_gap, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     На узком окне бот делает больше действий в рамках сессии, чем человек, и чем меньше выбранное окно - тем сильнее разница (2.6x при gap=60 против 1.6x при gap=1800). Поэтому для этого признака лучше использовать узкий gap (60 сек), в отличие от delta_in_sessions, где предпочтителен широкий gap.
     """)
@@ -594,7 +553,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     CV человека стабильно выше CV бота на всех проверенных порогах - разнородность объёма сессий по количеству действий у человека устойчиво выше, независимо от выбора gap.
     """)
@@ -602,7 +561,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Кандидаты на включение в итоговые признаки:
     + `events_per_session` (events_count / sessions_count, gap=60) - количество событий на сессию

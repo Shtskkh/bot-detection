@@ -3,17 +3,7 @@ import marimo
 __generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Импорты
-    """)
-    return
-
-
-@app.cell
-def _():
+with app.setup:
     import marimo as mo
     import polars as pl
     from tools.preprocessing import (
@@ -26,30 +16,14 @@ def _():
     import plotly.express as px
     import plotly.graph_objects as go
 
-    return (
-        add_parsed_ua_cols,
-        add_platform_match,
-        events_in_window,
-        get_column_specifications,
-        go,
-        mo,
-        pl,
-        plot_column_specs,
-        px,
-    )
-
-
-@app.cell
-def _(events_in_window, pl):
     _train = pl.read_csv("./data/train.csv", try_parse_dates=True)
     _events = pl.read_csv("./data/events.csv.gz", try_parse_dates=True)
 
     events_train = events_in_window(_train, _events).unique()
-    return (events_train,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Распределение платформ
     """)
@@ -57,7 +31,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, go, pl, px):
+def _():
     _fig = px.histogram(
         events_train.with_columns(pl.col("platform").str.to_lowercase()),
         x="platform",
@@ -85,7 +59,7 @@ def _(events_train, go, pl, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Для ботов чаще улавливается ```web``` и ```desktop``` как платформа, а также есть разночтение в ```ios``` и ```iphone```.
     """)
@@ -93,7 +67,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # user_agent
     """)
@@ -101,7 +75,7 @@ def _(mo):
 
 
 @app.cell
-def _(add_parsed_ua_cols, events_train, pl):
+def _():
     events_train_ua = add_parsed_ua_cols(events_train)
 
     events_train_ua = events_train_ua.with_columns(
@@ -111,7 +85,7 @@ def _(add_parsed_ua_cols, events_train, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Общие распределения
     """)
@@ -119,7 +93,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua, x="browser", histnorm="percent", text_auto=True
     )
@@ -139,7 +113,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua, x="os", histnorm="percent", text_auto=True
     )
@@ -159,7 +133,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua, x="device", histnorm="percent", text_auto=True
     )
@@ -179,7 +153,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Распределения внутри класса
     """)
@@ -187,7 +161,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua,
         x="browser",
@@ -212,7 +186,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua,
         x="os",
@@ -237,7 +211,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, go, px):
+def _(events_train_ua):
     _fig = px.histogram(
         events_train_ua,
         x="device",
@@ -262,7 +236,7 @@ def _(events_train_ua, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     У ботов чаще встречаются cli инструменты для запросов и Linux как платформа.
     """)
@@ -270,7 +244,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, pl):
+def _(events_train_ua):
     (
         events_train_ua.group_by(["cookie_id", "target"])
         .agg(
@@ -291,7 +265,7 @@ def _(events_train_ua, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Среднее количество платформ, браузеров и операционных систем у ботов и людей совпадает.
     """)
@@ -299,7 +273,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Совпадение платформы и операционной системы
     """)
@@ -307,7 +281,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(add_platform_match, events_train_ua):
+def _(events_train_ua):
     _platform_matches = add_platform_match(
         events_train_ua.get_column("platform").str.to_lowercase(),
         events_train_ua.get_column("os"),
@@ -318,7 +292,7 @@ def _(add_platform_match, events_train_ua):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua_match, go, px):
+def _(events_train_ua_match):
     _fig = px.histogram(
         events_train_ua_match,
         x="platform_match",
@@ -343,7 +317,7 @@ def _(events_train_ua_match, go, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # iphone и ios
     """)
@@ -351,7 +325,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train_ua, pl):
+def _(events_train_ua):
     (
         events_train_ua.filter(pl.col("platform").is_in(["ios", "iphone"]))
         .group_by("platform")
@@ -361,7 +335,7 @@ def _(events_train_ua, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Перед обучением нужно свести ios и iphone в одну платформу.
     """)
@@ -369,7 +343,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # pointer x/y
     """)
@@ -377,7 +351,7 @@ def _(mo):
 
 
 @app.cell
-def _(events_train, pl):
+def _():
     platform_clean = events_train.with_columns(
         pl.col("platform").str.to_lowercase().replace({"iphone": "ios"})
     )
@@ -385,7 +359,7 @@ def _(events_train, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Совпадение отсутствия значений x и y
     """)
@@ -393,7 +367,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     platform_clean.select(
         (
             pl.col("pointer_x").is_null() & pl.col("pointer_y").is_not_null()
@@ -403,7 +377,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     platform_clean.select(
         (
             pl.col("pointer_x").is_not_null() & pl.col("pointer_y").is_null()
@@ -413,7 +387,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Расхождений в наличии значения в `pointer_x/y` нет.
     """)
@@ -421,7 +395,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Зависимость от типа события
     """)
@@ -429,7 +403,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     _result = (
         platform_clean.group_by("event_name")
         .agg(
@@ -447,7 +421,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     В зависимости от типа события отсутствие значения `pointer_x/y` практически одинаково.
     """)
@@ -455,7 +429,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Зависимость от платформы
     """)
@@ -463,7 +437,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     _result = (
         platform_clean.group_by("platform")
         .agg(
@@ -484,7 +458,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     _result = (
         platform_clean.group_by("platform", "target")
         .agg(
@@ -505,7 +479,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     У ботов при web и desktop чаще `pointer_x/y` имеет значение null.
     """)
@@ -513,7 +487,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Среднее количество null
     """)
@@ -521,7 +495,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     (
         platform_clean.group_by("cookie_id", "target")
         .agg(
@@ -543,7 +517,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     В среднем у людей отсутствие `pointer_x/y` меньше, чем у ботов.
     """)
@@ -551,7 +525,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Количество уникальных значений
     """)
@@ -559,7 +533,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     (
         platform_clean.group_by("target")
         .agg(
@@ -573,7 +547,7 @@ def _(pl, platform_clean):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     У ботов количество уникальных значений `pointer_x/y` меньше.
     """)
@@ -581,7 +555,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, pl, platform_clean, plot_column_specs):
+def _(platform_clean):
     _target_col = "pointer_x"
     _prefix = "n_unique_"
     _full = _prefix + _target_col
@@ -604,7 +578,7 @@ def _(get_column_specifications, pl, platform_clean, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(get_column_specifications, pl, platform_clean, plot_column_specs):
+def _(platform_clean):
     _target_col = "pointer_y"
     _prefix = "n_unique_"
     _full = _prefix + _target_col
@@ -627,7 +601,7 @@ def _(get_column_specifications, pl, platform_clean, plot_column_specs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Повторяемость значений
     """)
@@ -635,7 +609,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(pl, platform_clean):
+def _(platform_clean):
     _result = (
         platform_clean.filter(pl.col("pointer_x").is_not_null())
         .group_by("cookie_id", "target")

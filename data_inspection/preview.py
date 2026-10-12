@@ -3,17 +3,7 @@ import marimo
 __generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Импорты
-    """)
-    return
-
-
-@app.cell
-def _():
+with app.setup:
     import marimo as mo
     import polars as pl
     from tools.preprocessing import events_in_window
@@ -21,11 +11,13 @@ def _():
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    return events_in_window, go, mo, pl
+    train = pl.read_csv("./data/train.csv", try_parse_dates=True)
+    test = pl.read_csv("./data/test.csv", try_parse_dates=True)
+    events = pl.read_csv("./data/events.csv.gz", try_parse_dates=True)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Предпросмотр
     """)
@@ -33,45 +25,37 @@ def _(mo):
 
 
 @app.cell
-def _(pl):
-    train = pl.read_csv("./data/train.csv", try_parse_dates=True)
-    test = pl.read_csv("./data/test.csv", try_parse_dates=True)
-    events = pl.read_csv("./data/events.csv.gz", try_parse_dates=True)
-    return events, test, train
-
-
-@app.cell
-def _(train):
+def _():
     train.head()
     return
 
 
 @app.cell
-def _(test):
+def _():
     test.head()
     return
 
 
 @app.cell
-def _(events):
+def _():
     events.head()
     return
 
 
 @app.cell
-def _(events):
+def _():
     events.schema
     return
 
 
 @app.cell
-def _(events, test, train):
+def _():
     print(train.shape, test.shape, events.shape)
     return
 
 
 @app.cell(hide_code=True)
-def _(pl, train):
+def _():
     (
         train.group_by("target")
         .agg(
@@ -84,7 +68,7 @@ def _(pl, train):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     В train всего 8% ботов.
     """)
@@ -92,7 +76,7 @@ def _(mo):
 
 
 @app.cell
-def _(events, events_in_window, test, train):
+def _():
     events_train = events_in_window(train, events)
     events_test = events_in_window(test, events)
 
@@ -101,33 +85,30 @@ def _(events, events_in_window, test, train):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Дубликаты
     """)
     return
 
 
-@app.cell(hide_code=True)
-def _(pl):
-    def get_duplicate_counts(df: pl.DataFrame) -> pl.DataFrame:
-        result = (
-            df.is_duplicated().alias("is_duplicate").value_counts(name="count")
-        )
+@app.function(hide_code=True)
+def get_duplicate_counts(df: pl.DataFrame) -> pl.DataFrame:
+    result = (
+        df.is_duplicated().alias("is_duplicate").value_counts(name="count")
+    )
 
-        result = result.with_columns(
-            (pl.col("count") / len(df) * 100).round(2).alias("percent")
-        )
+    result = result.with_columns(
+        (pl.col("count") / len(df) * 100).round(2).alias("percent")
+    )
 
-        result = result.sort("is_duplicate")
+    result = result.sort("is_duplicate")
 
-        return result
-
-    return (get_duplicate_counts,)
+    return result
 
 
 @app.cell(hide_code=True)
-def _(events, events_test, events_train, get_duplicate_counts, go):
+def _(events_test, events_train):
     _events_duplicates = get_duplicate_counts(events)
     _events_train_duplicates = get_duplicate_counts(events_train)
     _events_test_duplicates = get_duplicate_counts(events_test)
@@ -170,7 +151,7 @@ def _(events, events_test, events_train, get_duplicate_counts, go):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     В каждом полученном датасете есть ~3% полностью дублирующихся строк, что может искажать картину.
     """)
@@ -178,7 +159,7 @@ def _(mo):
 
 
 @app.cell
-def _(events, events_test, events_train):
+def _(events_test, events_train):
     unique_events = events.unique()
     unique_ev_tr = events_train.unique()
     unique_ev_te = events_test.unique()
@@ -188,32 +169,29 @@ def _(events, events_test, events_train):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Пропуски
     """)
     return
 
 
-@app.cell(hide_code=True)
-def _(pl):
-    def get_null_counts(df: pl.DataFrame, desc=False) -> pl.DataFrame:
-        return (
-            df.null_count()
-            .transpose(include_header=True, column_names=["null_count"])
-            .with_columns(
-                (pl.col("null_count") / len(df) * 100)
-                .round(2)
-                .alias("percent")
-            )
-            .sort("null_count", descending=desc)
+@app.function(hide_code=True)
+def get_null_counts(df: pl.DataFrame, desc=False) -> pl.DataFrame:
+    return (
+        df.null_count()
+        .transpose(include_header=True, column_names=["null_count"])
+        .with_columns(
+            (pl.col("null_count") / len(df) * 100)
+            .round(2)
+            .alias("percent")
         )
-
-    return (get_null_counts,)
+        .sort("null_count", descending=desc)
+    )
 
 
 @app.cell(hide_code=True)
-def _(get_null_counts, go, unique_ev_te, unique_ev_tr, unique_events):
+def _(unique_ev_te, unique_ev_tr, unique_events):
     _events_null_counts = get_null_counts(unique_events)
     _events_train_null_counts = get_null_counts(unique_ev_tr)
     _events_test_null_counts = get_null_counts(unique_ev_te)

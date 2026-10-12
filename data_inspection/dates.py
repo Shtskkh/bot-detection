@@ -3,36 +3,20 @@ import marimo
 __generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Импорты
-    """)
-    return
-
-
-@app.cell
-def _():
+with app.setup:
     import marimo as mo
     import polars as pl
     import plotly.express as px
     import plotly.graph_objects as go
     from tools.preprocessing import events_in_window
 
-    return events_in_window, go, mo, pl, px
-
-
-@app.cell
-def _(pl):
     train = pl.read_csv("./data/train.csv", try_parse_dates=True)
     test = pl.read_csv("./data/test.csv", try_parse_dates=True)
     events = pl.read_csv("./data/events.csv.gz", try_parse_dates=True)
-    return events, test, train
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Даты создания cookie
     """)
@@ -40,7 +24,7 @@ def _(mo):
 
 
 @app.cell
-def _(train):
+def _():
     print(
         train.get_column("cookie_created_at").dt.date().min(),
         train.get_column("cookie_created_at").dt.date().max(),
@@ -50,7 +34,7 @@ def _(train):
 
 
 @app.cell
-def _(test):
+def _():
     print(
         test.get_column("cookie_created_at").dt.date().min(),
         test.get_column("cookie_created_at").dt.date().max(),
@@ -60,7 +44,7 @@ def _(test):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Окна наблюдений
     """)
@@ -68,7 +52,7 @@ def _(mo):
 
 
 @app.cell
-def _(train):
+def _():
     print(
         train.get_column("window_start_ts").dt.date().min(),
         train.get_column("window_end_ts").dt.date().max(),
@@ -78,7 +62,7 @@ def _(train):
 
 
 @app.cell
-def _(test):
+def _():
     print(
         test.get_column("window_start_ts").dt.date().min(),
         test.get_column("window_end_ts").dt.date().max(),
@@ -88,7 +72,7 @@ def _(test):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Переход в окно наблюдения
     """)
@@ -96,13 +80,13 @@ def _(mo):
 
 
 @app.cell
-def _(events, events_in_window, train):
+def _():
     events_train = events_in_window(train, events).unique()
     return (events_train,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     # Распределение часов событий
     """)
@@ -110,7 +94,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(events_train, go, pl, px):
+def _(events_train):
     _fig = px.histogram(
         events_train.with_columns(pl.col("event_ts").dt.hour().alias("event_hour")),
         x="event_hour",
@@ -137,7 +121,7 @@ def _(events_train, go, pl, px):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     Боты заметно активнее в период с 0 до 8 часов, дальше либо больше активность людей, либо паритет, но, даты событий представлены, скорее всего, в UTC формате и без геоданных распределение, скорее всего, не даст нужного сигнала.
     """)
